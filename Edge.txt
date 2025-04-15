@@ -1,0 +1,2192 @@
+Edge-Enabled Quantum-Safe Real-Time Vaccine Supply Chain Optimization Framework
+
+
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch.utils.data import DataLoader, Dataset
+from typing import Dict, List, Tuple
+import time
+import hashlib
+import json
+import random
+import math
+from queue import PriorityQueue
+from collections import defaultdict
+
+# Set random seeds for reproducibility
+np.random.seed(42)
+torch.manual_seed(42)
+random.seed(42)
+
+###########################################
+# 1. Multi-access Edge Computing (MEC) Node
+###########################################
+
+class MECNode:
+    """
+    Simulates a Multi-access Edge Computing node in the vaccine supply chain
+    """
+    def __init__(self, node_id, location, capacity, processing_power):
+        """
+        Initialize a MEC node
+        
+        Args:
+            node_id: Unique identifier for the node
+            location: Geographic coordinates (lat, long)
+            capacity: Maximum storage capacity (in vaccine units)
+            processing_power: Computational capability (in FLOPS)
+        """
+        self.node_id = node_id
+        self.location = location
+        self.capacity = capacity
+        self.processing_power = processing_power
+        self.current_load = 0
+        self.connected_nodes = []
+        self.inventory = {}
+        self.sensor_data = []
+        self.ml_models = {}
+        self.blockchain = None
+        self.qkd_keys = {}
+        
+    def connect_to_node(self, node):
+        """Add a connection to another MEC node"""
+        if node not in self.connected_nodes:
+            self.connected_nodes.append(node)
+            
+    def add_inventory(self, vaccine_id, quantity, expiry_date, temperature_range):
+        """Update inventory with new vaccine stock"""
+        self.inventory[vaccine_id] = {
+            'quantity': quantity,
+            'expiry_date': expiry_date,
+            'temperature_range': temperature_range,
+            'timestamp': time.time()
+        }
+        
+    def process_sensor_data(self, sensor_id, data_type, value, timestamp):
+        """Process incoming IoT sensor data"""
+        data = {
+            'sensor_id': sensor_id,
+            'data_type': data_type,
+            'value': value,
+            'timestamp': timestamp,
+            'processed_timestamp': time.time()
+        }
+        
+        self.sensor_data.append(data)
+        
+        # Process data based on type
+        if data_type == 'temperature':
+            self._check_temperature_anomaly(sensor_id, value)
+        elif data_type == 'location':
+            self._update_location_tracking(sensor_id, value)
+        elif data_type == 'inventory':
+            self._update_inventory_level(sensor_id, value)
+            
+        return data
+    
+    def _check_temperature_anomaly(self, sensor_id, temperature):
+        """Check if temperature reading indicates an anomaly"""
+        for vaccine_id, info in self.inventory.items():
+            min_temp, max_temp = info['temperature_range']
+            if temperature < min_temp or temperature > max_temp:
+                # Trigger alert and corrective action
+                return {
+                    'alert': True,
+                    'vaccine_id': vaccine_id,
+                    'sensor_id': sensor_id,
+                    'temperature': temperature,
+                    'allowed_range': info['temperature_range']
+                }
+        return {'alert': False}
+    
+    def _update_location_tracking(self, sensor_id, location):
+        """Update location tracking information"""
+        # Implementation would track movement of vaccine shipments
+        pass
+    
+    def _update_inventory_level(self, sensor_id, inventory_data):
+        """Update inventory levels based on sensor readings"""
+        # Implementation would update inventory based on real-time data
+        pass
+    
+    def load_ml_model(self, model_type, model):
+        """Load a machine learning model onto the edge node"""
+        self.ml_models[model_type] = model
+        
+    def predict(self, model_type, input_data):
+        """Make prediction using loaded ML model"""
+        if model_type in self.ml_models:
+            model = self.ml_models[model_type]
+            return model.predict(input_data)
+        else:
+            raise ValueError(f"Model type {model_type} not loaded on this node")
+    
+    def establish_qkd_connection(self, target_node, key_size=256):
+        """Simulate QKD key establishment with another node"""
+        # In a real implementation, this would interface with QKD hardware
+        # Here we simulate the key generation process
+        shared_key = np.random.randint(0, 2, size=key_size)
+        key_str = ''.join(map(str, shared_key))
+        key_id = hashlib.sha256(f"{self.node_id}:{target_node.node_id}:{time.time()}".encode()).hexdigest()
+        
+        # Store the key
+        self.qkd_keys[target_node.node_id] = {
+            'key_id': key_id,
+            'key': key_str,
+            'timestamp': time.time(),
+            'used': False
+        }
+        
+        # Target node also stores the key
+        target_node.qkd_keys[self.node_id] = {
+            'key_id': key_id,
+            'key': key_str,
+            'timestamp': time.time(),
+            'used': False
+        }
+        
+        return key_id
+    
+    def send_secure_message(self, target_node, message):
+        """Send a message securely using QKD keys"""
+        if target_node.node_id not in self.qkd_keys:
+            key_id = self.establish_qkd_connection(target_node)
+        else:
+            key_id = self.qkd_keys[target_node.node_id]['key_id']
+            
+        key = self.qkd_keys[target_node.node_id]['key']
+        
+        # Simulate encryption with one-time pad (in a real system, use proper encryption)
+        message_bytes = message.encode()
+        key_bytes = key.encode()[:len(message_bytes)]
+        
+        # XOR encryption (simplified)
+        encrypted = bytes([m ^ k for m, k in zip(message_bytes, key_bytes)])
+        
+        # Mark key as used
+        self.qkd_keys[target_node.node_id]['used'] = True
+        
+        return {
+            'sender': self.node_id,
+            'receiver': target_node.node_id,
+            'encrypted_message': encrypted,
+            'key_id': key_id
+        }
+    
+    def receive_secure_message(self, encrypted_data):
+        """Receive and decrypt a secure message"""
+        sender_id = encrypted_data['sender']
+        encrypted = encrypted_data['encrypted_message']
+        key_id = encrypted_data['key_id']
+        
+        if sender_id not in self.qkd_keys or self.qkd_keys[sender_id]['key_id'] != key_id:
+            raise ValueError("Key not available or key ID mismatch")
+            
+        key = self.qkd_keys[sender_id]['key']
+        
+        # Decrypt
+        key_bytes = key.encode()[:len(encrypted)]
+        decrypted = bytes([e ^ k for e, k in zip(encrypted, key_bytes)])
+        
+        # Mark key as used
+        self.qkd_keys[sender_id]['used'] = True
+        
+        return decrypted.decode()
+
+###########################################
+# 2. Quantum-Safe Cryptography Integration
+###########################################
+
+# Note: In a real implementation, these would use actual quantum-resistant libraries
+# We'll simulate the APIs for the post-quantum algorithms
+
+class QuantumSafeCrypto:
+    """
+    Simulates quantum-safe cryptographic protocols integration
+    """
+    @staticmethod
+    def kyber_keygen():
+        """
+        Simulate CRYSTALS-Kyber key generation
+        
+        Returns:
+            (dict, dict): (public_key, secret_key)
+        """
+        # In real implementation, use a proper Kyber library
+        d = np.random.bytes(32)  # 256-bit random seed
+        
+        # Simulate public and private keys
+        rho = hashlib.shake_256(d).digest(32)
+        sigma = hashlib.shake_256(d + b'1').digest(32)
+        
+        # Simulate secret vector and error vector
+        s = np.random.randint(-2, 3, size=256)  # Centered binomial distribution
+        e = np.random.randint(-2, 3, size=256)
+        
+        # Simulate public key computation
+        # In real implementation: t = As + e
+        t = np.random.bytes(32)  # Simulated public key
+        
+        return {
+            'public_key': {'t': t, 'rho': rho},
+            'secret_key': {'s': s}
+        }
+    
+    @staticmethod
+    def kyber_encaps(public_key):
+        """
+        Simulate CRYSTALS-Kyber encapsulation
+        
+        Args:
+            public_key: Kyber public key
+            
+        Returns:
+            (bytes, bytes): (ciphertext, shared_key)
+        """
+        # Simulate random message
+        m = np.random.bytes(32)
+        
+        # Simulate ciphertext generation
+        u = np.random.bytes(32)
+        v = np.random.bytes(32)
+        
+        # Simulate key derivation
+        shared_key = hashlib.shake_256(m + public_key['t']).digest(32)
+        
+        return {'ciphertext': (u, v), 'shared_key': shared_key}
+    
+    @staticmethod
+    def kyber_decaps(ciphertext, secret_key, public_key):
+        """
+        Simulate CRYSTALS-Kyber decapsulation
+        
+        Args:
+            ciphertext: Kyber ciphertext
+            secret_key: Kyber secret key
+            public_key: Kyber public key
+            
+        Returns:
+            bytes: Shared key
+        """
+        # In a real implementation, this would recover the message using the secret key
+        # and re-encrypt to verify correctness
+        
+        # Simulate message recovery
+        m_prime = np.random.bytes(32)
+        
+        # Simulate key derivation
+        shared_key = hashlib.shake_256(m_prime + public_key['t']).digest(32)
+        
+        return shared_key
+    
+    @staticmethod
+    def dilithium_keygen():
+        """
+        Simulate CRYSTALS-Dilithium key generation
+        
+        Returns:
+            (dict, dict): (public_key, secret_key)
+        """
+        # Generate random seeds
+        rho = np.random.bytes(32)
+        k = np.random.bytes(32)
+        tr = np.random.bytes(32)
+        
+        # Simulate key generation
+        # In real implementation, this would generate a matrix A and vectors s1, s2
+        t1 = np.random.bytes(32)  # Public value
+        s1 = np.random.bytes(32)  # Secret vector
+        s2 = np.random.bytes(32)  # Secret vector
+        t0 = np.random.bytes(32)  # Additional public value
+        
+        return {
+            'public_key': {'rho': rho, 't1': t1},
+            'secret_key': {'rho': rho, 'k': k, 'tr': tr, 's1': s1, 's2': s2, 't0': t0}
+        }
+    
+    @staticmethod
+    def dilithium_sign(message, secret_key):
+        """
+        Simulate CRYSTALS-Dilithium signature generation
+        
+        Args:
+            message: Message to sign
+            secret_key: Dilithium secret key
+            
+        Returns:
+            dict: Signature
+        """
+        # Simulate signature generation
+        # In real implementation, this would generate a challenge and response
+        mu = hashlib.sha256(secret_key['tr'] + message.encode()).digest()
+        
+        # Simulate challenge and response
+        c = hashlib.shake_256(mu).digest(32)
+        z = np.random.bytes(32)
+        h = np.random.bytes(32)
+        
+        return {'z': z, 'h': h, 'c': c}
+    
+    @staticmethod
+    def dilithium_verify(message, signature, public_key):
+        """
+        Simulate CRYSTALS-Dilithium signature verification
+        
+        Args:
+            message: Original message
+            signature: Dilithium signature
+            public_key: Dilithium public key
+            
+        Returns:
+            bool: True if signature is valid
+        """
+        # In a real implementation, this would verify the signature using the public key
+        # Simulate verification (always returns True for simulation)
+        return True
+    
+    @staticmethod
+    def sphincs_keygen():
+        """
+        Simulate SPHINCS+ key generation
+        
+        Returns:
+            (bytes, bytes): (public_key, secret_key)
+        """
+        # Generate random seeds
+        sk_seed = np.random.bytes(32)
+        sk_prf = np.random.bytes(32)
+        pk_seed = np.random.bytes(32)
+        
+        # Simulate root computation
+        pk_root = hashlib.sha256(sk_seed + pk_seed).digest()
+        
+        return {
+            'public_key': {'seed': pk_seed, 'root': pk_root},
+            'secret_key': {'seed': sk_seed, 'prf': sk_prf, 'pk_seed': pk_seed}
+        }
+    
+    @staticmethod
+    def sphincs_sign(message, secret_key):
+        """
+        Simulate SPHINCS+ signature generation
+        
+        Args:
+            message: Message to sign
+            secret_key: SPHINCS+ secret key
+            
+        Returns:
+            dict: Signature
+        """
+        # Simulate randomness generation
+        r = hashlib.shake_256(secret_key['prf'] + message.encode()).digest(32)
+        
+        # Simulate index generation
+        idx = int.from_bytes(hashlib.shake_256(secret_key['prf'] + message.encode() + r).digest(8), 'big')
+        
+        # Simulate signature components
+        fors_sig = np.random.bytes(32)
+        ht_sig = np.random.bytes(32)
+        
+        return {'r': r, 'fors': fors_sig, 'ht': ht_sig}
+    
+    @staticmethod
+    def sphincs_verify(message, signature, public_key):
+        """
+        Simulate SPHINCS+ signature verification
+        
+        Args:
+            message: Original message
+            signature: SPHINCS+ signature
+            public_key: SPHINCS+ public key
+            
+        Returns:
+            bool: True if signature is valid
+        """
+        # In a real implementation, this would verify the signature
+        # Simulate verification (always returns True for simulation)
+        return True
+    
+    @staticmethod
+    def frodo_keygen():
+        """
+        Simulate FrodoKEM key generation
+        
+        Returns:
+            (dict, dict): (public_key, secret_key)
+        """
+        # Generate random seed
+        seed_a = np.random.bytes(16)
+        
+        # Simulate matrix A generation
+        # In real implementation, this would generate a large matrix
+        
+        # Simulate secret and error matrices
+        s = np.random.randint(-3, 4, size=(8, 8))  # Small matrix for simulation
+        e = np.random.randint(-3, 4, size=(8, 8))
+        
+        # Simulate B = AS + E
+        b = np.random.bytes(32)  # Simplified for simulation
+        
+        return {
+            'public_key': {'seed_a': seed_a, 'b': b},
+            'secret_key': {'s': s}
+        }
+    
+    @staticmethod
+    def frodo_encaps(public_key):
+        """
+        Simulate FrodoKEM encapsulation
+        
+        Args:
+            public_key: FrodoKEM public key
+            
+        Returns:
+            (dict, bytes): (ciphertext, shared_key)
+        """
+        # Simulate random message
+        m = np.random.bytes(16)
+        
+        # Simulate ciphertext generation
+        b_prime = np.random.bytes(32)
+        c = np.random.bytes(32)
+        
+        # Simulate key derivation
+        shared_key = hashlib.shake_256(m + hashlib.sha256(public_key['b']).digest()).digest(32)
+        
+        return {'ciphertext': {'b_prime': b_prime, 'c': c}, 'shared_key': shared_key}
+    
+    @staticmethod
+    def frodo_decaps(ciphertext, secret_key, public_key):
+        """
+        Simulate FrodoKEM decapsulation
+        
+        Args:
+            ciphertext: FrodoKEM ciphertext
+            secret_key: FrodoKEM secret key
+            public_key: FrodoKEM public key
+            
+        Returns:
+            bytes: Shared key
+        """
+        # In a real implementation, this would recover the message and derive the key
+        
+        # Simulate message recovery
+        m_prime = np.random.bytes(16)
+        
+        # Simulate key derivation
+        shared_key = hashlib.shake_256(m_prime + hashlib.sha256(public_key['b']).digest()).digest(32)
+        
+        return shared_key
+
+
+###########################################
+# 3. Hierarchical Attention Network for Resource Allocation (HAN-RA)
+###########################################
+
+class LocalContextEncoder(nn.Module):
+    """
+    Processes facility-level information using lightweight 1D convolutions
+    """
+    def __init__(self, input_dim, output_dim=128):
+        super(LocalContextEncoder, self).__init__()
+        self.conv1 = nn.Conv1d(input_dim, 64, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv1d(64, output_dim, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm1d(64)
+        self.bn2 = nn.BatchNorm1d(output_dim)
+        
+    def forward(self, x):
+        # x shape: [batch_size, seq_len, input_dim]
+        x = x.permute(0, 2, 1)  # -> [batch_size, input_dim, seq_len]
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
+        x = x.permute(0, 2, 1)  # -> [batch_size, seq_len, output_dim]
+        
+        # Global average pooling over the sequence length
+        x = torch.mean(x, dim=1)  # -> [batch_size, output_dim]
+        
+        return x
+
+
+class SelfAttention(nn.Module):
+    """
+    Linear-complexity self-attention mechanism for regional context
+    """
+    def __init__(self, input_dim, output_dim):
+        super(SelfAttention, self).__init__()
+        self.query = nn.Linear(input_dim, output_dim)
+        self.key = nn.Linear(input_dim, output_dim)
+        self.value = nn.Linear(input_dim, output_dim)
+        self.scale = torch.sqrt(torch.tensor(output_dim, dtype=torch.float32))
+        
+    def forward(self, x):
+        # x shape: [batch_size, seq_len, input_dim]
+        batch_size, seq_len, _ = x.size()
+        
+        q = self.query(x)  # [batch_size, seq_len, output_dim]
+        k = self.key(x)    # [batch_size, seq_len, output_dim]
+        v = self.value(x)  # [batch_size, seq_len, output_dim]
+        
+        # Compute attention scores
+        scores = torch.bmm(q, k.transpose(1, 2)) / self.scale  # [batch_size, seq_len, seq_len]
+        
+        # Apply softmax
+        attention = F.softmax(scores, dim=-1)
+        
+        # Apply attention to values
+        output = torch.bmm(attention, v)  # [batch_size, seq_len, output_dim]
+        
+        return output
+
+
+class RegionalContextEncoder(nn.Module):
+    """
+    Processes information across facilities using self-attention
+    """
+    def __init__(self, input_dim, output_dim=256):
+        super(RegionalContextEncoder, self).__init__()
+        self.attention = SelfAttention(input_dim, input_dim)
+        self.fc = nn.Linear(input_dim, output_dim)
+        self.norm = nn.LayerNorm(output_dim)
+        
+    def forward(self, x):
+        # x shape: [batch_size, num_facilities, input_dim]
+        
+        # Apply self-attention
+        attended = self.attention(x)
+        
+        # Residual connection
+        x = x + attended
+        
+        # Project to output dimension
+        x = self.fc(x)
+        x = self.norm(x)
+        x = F.relu(x)
+        
+        # Global average pooling over facilities
+        x = torch.mean(x, dim=1)  # -> [batch_size, output_dim]
+        
+        return x
+
+
+class SparseAttention(nn.Module):
+    """
+    Sparse attention mechanism for global context processing
+    """
+    def __init__(self, input_dim, output_dim, sparsity=0.8):
+        super(SparseAttention, self).__init__()
+        self.query = nn.Linear(input_dim, output_dim)
+        self.key = nn.Linear(input_dim, output_dim)
+        self.value = nn.Linear(input_dim, output_dim)
+        self.scale = torch.sqrt(torch.tensor(output_dim, dtype=torch.float32))
+        self.sparsity = sparsity
+        
+    def forward(self, x):
+        # x shape: [batch_size, seq_len, input_dim]
+        batch_size, seq_len, _ = x.size()
+        
+        q = self.query(x)  # [batch_size, seq_len, output_dim]
+        k = self.key(x)    # [batch_size, seq_len, output_dim]
+        v = self.value(x)  # [batch_size, seq_len, output_dim]
+        
+        # Compute attention scores
+        scores = torch.bmm(q, k.transpose(1, 2)) / self.scale  # [batch_size, seq_len, seq_len]
+        
+        # Create sparse attention by keeping only top-k values per row
+        k = int(seq_len * (1 - self.sparsity))
+        topk_values, topk_indices = torch.topk(scores, k=max(1, k), dim=-1)
+        
+        # Create sparse mask
+        mask = torch.zeros_like(scores).scatter_(-1, topk_indices, 1)
+        
+        # Apply mask and softmax
+        masked_scores = scores * mask
+        attention = F.softmax(masked_scores, dim=-1)
+        
+        # Apply attention to values
+        output = torch.bmm(attention, v)  # [batch_size, seq_len, output_dim]
+        
+        return output
+
+
+class GlobalContextEncoder(nn.Module):
+    """
+    Processes global patterns using sparse attention
+    """
+    def __init__(self, input_dim, output_dim=512):
+        super(GlobalContextEncoder, self).__init__()
+        self.attention = SparseAttention(input_dim, input_dim)
+        self.fc = nn.Linear(input_dim, output_dim)
+        self.norm = nn.LayerNorm(output_dim)
+        
+    def forward(self, x):
+        # x shape: [batch_size, num_regions, input_dim]
+        
+        # Apply sparse attention
+        attended = self.attention(x)
+        
+        # Residual connection
+        x = x + attended
+        
+        # Project to output dimension
+        x = self.fc(x)
+        x = self.norm(x)
+        x = F.relu(x)
+        
+        # Global average pooling over regions
+        x = torch.mean(x, dim=1)  # -> [batch_size, output_dim]
+        
+        return x
+
+
+class HANResourceAllocation(nn.Module):
+    """
+    Hierarchical Attention Network for Resource Allocation (HAN-RA)
+    """
+    def __init__(self, input_dim, num_facilities, num_regions):
+        super(HANResourceAllocation, self).__init__()
+        
+        # Local context encoder (facility level)
+        self.local_encoder = LocalContextEncoder(input_dim, output_dim=128)
+        
+        # Regional context encoder
+        self.regional_encoder = RegionalContextEncoder(128, output_dim=256)
+        
+        # Global context encoder
+        self.global_encoder = GlobalContextEncoder(256, output_dim=512)
+        
+        # Decision layer with multiple heads
+        self.inventory_head = nn.Linear(512, num_facilities)
+        self.routing_head = nn.Linear(512, num_facilities * num_facilities)
+        self.capacity_head = nn.Linear(512, num_facilities)
+        
+    def forward(self, facility_data, regional_data, global_data):
+        """
+        Forward pass through the HAN-RA model
+        
+        Args:
+            facility_data: Tensor of shape [batch_size, num_facilities, input_dim]
+            regional_data: Tensor of shape [batch_size, num_regions, input_dim]
+            global_data: Tensor of shape [batch_size, num_globals, input_dim]
+            
+        Returns:
+            dict: Different resource allocation decisions
+        """
+        # Get local context from each facility
+        batch_size, num_facilities, _ = facility_data.size()
+        local_contexts = []
+        
+        for i in range(num_facilities):
+            facility = facility_data[:, i, :].unsqueeze(1)  # [batch_size, 1, input_dim]
+            local_context = self.local_encoder(facility)  # [batch_size, 128]
+            local_contexts.append(local_context)
+            
+        # Stack local contexts
+        local_contexts = torch.stack(local_contexts, dim=1)  # [batch_size, num_facilities, 128]
+        
+        # Process regional data
+        regional_context = self.regional_encoder(local_contexts)  # [batch_size, 256]
+        
+        # Process global data
+        global_context = self.global_encoder(regional_data)  # [batch_size, 512]
+        
+        # Make decisions using different heads
+        inventory_decisions = torch.sigmoid(self.inventory_head(global_context))
+        routing_decisions = self.routing_head(global_context).view(batch_size, num_facilities, num_facilities)
+        capacity_decisions = F.softplus(self.capacity_head(global_context))
+        
+        return {
+            'inventory_allocation': inventory_decisions,
+            'routing_decisions': routing_decisions,
+            'capacity_planning': capacity_decisions
+        }
+
+
+###########################################
+# 4. Adaptive Multi-Agent Reinforcement Learning (AMARL)
+###########################################
+
+class AMARL:
+    """
+    Adaptive Multi-Agent Reinforcement Learning for coordinated vaccine distribution
+    """
+    def __init__(self, n_agents, state_dim, action_dim, learning_rate=0.01, beta=0.5):
+        """
+        Initialize AMARL
+        
+        Args:
+            n_agents: Number of agents (facilities)
+            state_dim: Dimensionality of state space
+            action_dim: Dimensionality of action space
+            learning_rate: Initial learning rate
+            beta: Weight for collaborative gradient
+        """
+        self.n_agents = n_agents
+        self.state_dim = state_dim
+        self.action_dim = action_dim
+        self.learning_rate = learning_rate
+        self.beta = beta  # Weight for collaborative gradient
+        
+        # Initialize policy parameters for all agents
+        # Each agent has its own policy
+        self.theta = np.random.normal(0, 0.1, (self.n_agents, self.state_dim, self.action_dim))
+        
+        # Experience buffer for each agent
+        self.experiences = [[] for _ in range(n_agents)]
+        
+    def compute_reward(self, efficiency, coverage, wastage_prevention, constraints_violation):
+        """
+        Calculate reward based on multiple objectives
+        
+        Args:
+            efficiency: Resource utilization efficiency
+            coverage: Population coverage
+            wastage_prevention: Vaccine wastage prevention
+            constraints_violation: Penalty for violating constraints
+            
+        Returns:
+            float: Combined reward
+        """
+        w1, w2, w3, w4 = 0.3, 0.3, 0.2, 0.2  # Weights for different components
+        
+        return (w1 * efficiency + w2 * coverage + w3 * wastage_prevention - w4 * constraints_violation)
+    
+    def get_state_vector(self, state):
+        """
+        Combine different state components into a single vector
+        
+        Args:
+            state: Dict containing state components
+            
+        Returns:
+            np.ndarray: Combined state vector
+        """
+        return np.concatenate([
+            state['local_state'],
+            state['shared_state'],
+            state['environmental_state']
+        ])
+    
+    def get_policy_mean(self, agent_id, state_vector):
+        """
+        Compute mean of policy distribution
+        
+        Args:
+            agent_id: ID of the agent
+            state_vector: State vector
+            
+        Returns:
+            np.ndarray: Mean of policy distribution
+        """
+        return np.tanh(state_vector @ self.theta[agent_id])  # Using tanh for bounded output
+    
+    def select_action(self, agent_id, state):
+        """
+        Select action for a given agent based on policy
+        
+        Args:
+            agent_id: ID of the agent
+            state: Current state
+            
+        Returns:
+            np.ndarray: Selected action
+        """
+        state_vector = self.get_state_vector(state)
+        mean = self.get_policy_mean(agent_id, state_vector)
+        
+        # Add exploration noise
+        noise = np.random.normal(0, 0.1, size=self.action_dim)
+        action = np.clip(mean + noise, -1, 1)
+        
+        return action
+    
+    def get_baseline(self, state_vector):
+        """
+        Compute baseline for advantage estimation
+        
+        Args:
+            state_vector: State vector
+            
+        Returns:
+            float: Baseline value
+        """
+        return np.mean(state_vector)
+    
+    def compute_local_gradient(self, agent_id, state, action, reward):
+        """
+        Compute gradient for local optimization
+        
+        Args:
+            agent_id: ID of the agent
+            state: Current state
+            action: Taken action
+            reward: Received reward
+            
+        Returns:
+            np.ndarray: Local gradient
+        """
+        state_vector = self.get_state_vector(state)
+        
+        # Compute advantage (reward - baseline)
+        advantage = reward - self.get_baseline(state_vector)
+        
+        # Compute policy gradient
+        mean = self.get_policy_mean(agent_id, state_vector)
+        gradient = np.outer(action - mean, state_vector) * advantage
+        
+        return gradient
+    
+    def aggregate_neighbor_gradients(self, gradients):
+        """
+        Aggregate gradients from neighboring agents
+        
+        Args:
+            gradients: List of gradients from neighboring agents
+            
+        Returns:
+            np.ndarray: Aggregated gradient
+        """
+        if not gradients:
+            return np.zeros_like(self.theta[0])
+        
+        return np.mean(gradients, axis=0)
+    
+    def update_learning_rate(self, performance_metrics):
+        """
+        Adjust learning rate based on performance
+        
+        Args:
+            performance_metrics: Dict containing performance metrics
+            
+        Returns:
+            float: Updated learning rate
+        """
+        if performance_metrics['improvement_rate'] < 0.01:
+            self.learning_rate *= 0.95  # Decrease if improvement is small
+        
+        return max(0.001, self.learning_rate)  # Ensure minimum learning rate
+    
+    def train(self, agent_id, states, actions, rewards, neighbor_gradients=None):
+        """
+        Main training loop for AMARL
+        
+        Args:
+            agent_id: ID of the agent being trained
+            states: List of states
+            actions: List of actions
+            rewards: List of rewards
+            neighbor_gradients: List of gradients from neighboring agents
+            
+        Returns:
+            dict: Training metrics
+        """
+        if neighbor_gradients is None:
+            neighbor_gradients = []
+            
+        total_loss = 0
+        
+        for state, action, reward in zip(states, actions, rewards):
+            # Compute local gradient
+            local_grad = self.compute_local_gradient(agent_id, state, action, reward)
+            
+            # Get collaborative gradient
+            shared_grad = self.aggregate_neighbor_gradients(neighbor_gradients)
+            
+            # Update policy parameters
+            self.theta[agent_id] += self.learning_rate * (local_grad + self.beta * shared_grad)
+            
+            # Track loss
+            total_loss += -reward  # Negative reward as loss
+        
+        # Update learning rate
+        self.learning_rate = self.update_learning_rate({
+            'improvement_rate': 1.0 / (1.0 + total_loss)
+        })
+        
+        return {
+            'loss': total_loss,
+            'learning_rate': self.learning_rate,
+            'policy_params': self.theta[agent_id]
+        }
+
+
+###########################################
+# 5. Quantum-Inspired Route Optimization (QIRO)
+###########################################
+
+class QuantumInspiredRouteOptimizer:
+    """
+    Quantum-Inspired Route Optimization algorithm for dynamic route optimization
+    in vaccine delivery networks
+    """
+    def __init__(self, n_routes, constraints):
+        """
+        Initialize the QIRO optimizer
+        
+        Args:
+            n_routes: Number of potential routes
+            constraints: Delivery constraints
+        """
+        self.n_qubits = math.ceil(math.log2(n_routes))
+        self.constraints = constraints
+        self.weights = {
+            'time': 0.4,
+            'cost': 0.3,
+            'risk': 0.2,
+            'viability': 0.1
+        }
+    
+    def optimize_routes(self, routes, real_time_data):
+        """
+        Main QIRO algorithm combining quantum-inspired principles with classical optimization
+        for dynamic route optimization in vaccine delivery networks.
+        
+        Args:
+            routes: List of potential routes
+            real_time_data: Real-time data about traffic, weather, etc.
+            
+        Returns:
+            dict: Optimized route and associated metrics
+        """
+        # Phase 1: Quantum State Preparation
+        quantum_states = self._prepare_quantum_states(routes)
+        
+        # Phase 2: Route Evaluation
+        route_scores = {}
+        for i, route in enumerate(routes):
+            metrics = self._compute_metrics(route, real_time_data)
+            score = (
+                self.weights['time'] * metrics['travel_time'] +
+                self.weights['cost'] * metrics['cost'] +
+                self.weights['risk'] * metrics['risk_factor'] +
+                self.weights['viability'] * metrics['vaccine_viability']
+            )
+            route_scores[i] = score
+            quantum_states[i] *= math.sqrt(score)  # Amplitude amplification
+        
+        # Phase 3: Quantum-Inspired Evolution
+        for iteration in range(self.n_qubits * 2):
+            # Apply quantum interference
+            quantum_states = self._quantum_interference(quantum_states)
+            
+            # Apply quantum rotation gates
+            quantum_states = self._rotation_gates(quantum_states, route_scores)
+            
+            # Apply quantum entanglement simulation
+            quantum_states = self._entanglement_simulation(quantum_states)
+        
+        # Phase 4: Measurement and Classical Post-processing
+        probabilities = [abs(state)**2 for state in quantum_states]
+        best_route_idx = max(range(len(probabilities)), key=lambda i: probabilities[i])
+        
+        # Phase 5: Dynamic Adaptation
+        optimized_route = routes[best_route_idx]
+        optimized_route = self._local_search_optimization(optimized_route, real_time_data)
+        
+        final_metrics = self._compute_metrics(optimized_route, real_time_data)
+        
+        return {
+            'route': optimized_route,
+            'metrics': final_metrics,
+            'score': route_scores[best_route_idx]
+        }
+    
+    def _prepare_quantum_states(self, routes):
+        """
+        Initialize quantum-inspired states for route superposition
+        
+        Args:
+            routes: List of potential routes
+            
+        Returns:
+            list: Initial quantum states
+        """
+        n_routes = len(routes)
+        states = [1/math.sqrt(n_routes)] * n_routes  # Equal superposition
+        return states
+    
+    def _compute_metrics(self, route, real_time_data):
+        """
+        Compute route metrics considering real-time conditions
+        
+        Args:
+            route: A potential route
+            real_time_data: Real-time data about traffic, weather, etc.
+            
+        Returns:
+            dict: Route metrics
+        """
+        # In a real implementation, this would use actual data
+        # Here we simulate the metrics
+        
+        # Travel time (lower is better, normalized between 0-1)
+        travel_time = self._calculate_travel_time(route, real_time_data)
+        
+        # Cost (lower is better, normalized between 0-1)
+        cost = self._calculate_cost(route)
+        
+        # Risk factor (lower is better, normalized between 0-1)
+        risk_factor = self._calculate_risk(route, real_time_data)
+        
+        # Vaccine viability (higher is better, normalized between 0-1)
+        vaccine_viability = self._calculate_viability(route, real_time_data)
+        
+        return {
+            'travel_time': travel_time,
+            'cost': cost,
+            'risk_factor': risk_factor,
+            'vaccine_viability': vaccine_viability
+        }
+    
+    def _calculate_travel_time(self, route, real_time_data):
+        """
+        Calculate estimated travel time for a route
+        
+        Args:
+            route: A potential route
+            real_time_data: Real-time data about traffic, weather, etc.
+            
+        Returns:
+            float: Normalized travel time (0-1, lower is better)
+        """
+        # Simulate travel time calculation based on route length and traffic conditions
+        base_time = len(route) * 10  # Base time proportional to route length
+        
+        # Apply traffic factor
+        traffic_factor = real_time_data.get('traffic_factor', 1.0)
+        
+        # Apply weather factor
+        weather_factor = real_time_data.get('weather_factor', 1.0)
+        
+        total_time = base_time * traffic_factor * weather_factor
+        
+        # Normalize to 0-1 range (inversely, as lower time is better)
+        max_time = 1000  # Define a maximum reasonable time
+        normalized_time = 1 - min(total_time / max_time, 1)
+        
+        return normalized_time
+    
+    def _calculate_cost(self, route):
+        """
+        Calculate the cost of a route
+        
+        Args:
+            route: A potential route
+            
+        Returns:
+            float: Normalized cost (0-1, lower is better)
+        """
+        # Simulate cost calculation based on route length and road types
+        base_cost = len(route) * 5  # Base cost proportional to route length
+        
+        # Apply different costs for different road types
+        road_type_costs = {
+            'highway': 1.5,
+            'main_road': 1.0,
+            'local_road': 0.8
+        }
+        
+        total_cost = base_cost
+        for segment in route:
+            if 'road_type' in segment:
+                road_type = segment['road_type']
+                total_cost *= road_type_costs.get(road_type, 1.0)
+        
+        # Normalize to 0-1 range (inversely, as lower cost is better)
+        max_cost = 500  # Define a maximum reasonable cost
+        normalized_cost = 1 - min(total_cost / max_cost, 1)
+        
+        return normalized_cost
+    
+    def _calculate_risk(self, route, real_time_data):
+        """
+        Calculate risk factor for a route
+        
+        Args:
+            route: A potential route
+            real_time_data: Real-time data about traffic, weather, etc.
+            
+        Returns:
+            float: Normalized risk factor (0-1, lower is better)
+        """
+        # Simulate risk calculation based on road conditions, weather, and security factors
+        base_risk = 0.2  # Base risk level
+        
+        # Apply weather risk
+        weather_risk = real_time_data.get('weather_risk', 0.1)
+        
+        # Apply security risk
+        security_risk = real_time_data.get('security_risk', 0.1)
+        
+        # Apply road condition risk
+        road_risk = 0.0
+        for segment in route:
+            if 'road_condition' in segment:
+                condition = segment['road_condition']
+                if condition == 'poor':
+                    road_risk += 0.2
+                elif condition == 'fair':
+                    road_risk += 0.1
+                # Good roads don't add risk
+        
+        road_risk = min(road_risk, 0.5)  # Cap road risk
+        
+        total_risk = base_risk + weather_risk + security_risk + road_risk
+        
+        # Normalize to 0-1 range (inversely, as lower risk is better)
+        normalized_risk = 1 - min(total_risk, 1)
+        
+        return normalized_risk
+    
+    def _calculate_viability(self, route, real_time_data):
+        """
+        Calculate vaccine viability for a route
+        
+        Args:
+            route: A potential route
+            real_time_data: Real-time data about traffic, weather, etc.
+            
+        Returns:
+            float: Normalized viability (0-1, higher is better)
+        """
+        # Simulate viability calculation based on temperature control and travel time
+        base_viability = 0.9  # Base viability level
+        
+        # Apply travel time factor
+        travel_time = self._calculate_travel_time(route, real_time_data)
+        time_factor = travel_time * 0.2  # Travel time impact on viability
+        
+        # Apply temperature control factor
+        temp_control = real_time_data.get('temperature_control', 0.9)
+        
+        # Apply handling factor
+        handling_factor = 0.95  # Quality of handling during transport
+        
+        total_viability = base_viability * (0.8 + time_factor) * temp_control * handling_factor
+        
+        # Normalize to 0-1 range
+        normalized_viability = max(0, min(total_viability, 1))
+        
+        return normalized_viability
+    
+    def _quantum_interference(self, states):
+        """
+        Simulate quantum interference effects
+        
+        Args:
+            states: Current quantum states
+            
+        Returns:
+            list: Updated quantum states after interference
+        """
+        n = len(states)
+        new_states = states.copy()
+        
+        for i in range(n):
+            interference = sum(states[j] * ((-1)**(bin(i^j).count('1'))) for j in range(n))
+            new_states[i] = interference / math.sqrt(n)
+        
+        return new_states
+    
+    def _rotation_gates(self, states, scores):
+        """
+        Apply quantum rotation gates based on route scores
+        
+        Args:
+            states: Current quantum states
+            scores: Route scores
+            
+        Returns:
+            list: Updated quantum states after rotation
+        """
+        max_score = max(scores.values())
+        return [state * complex(math.cos(math.pi * score/max_score), math.sin(math.pi * score/max_score)) 
+                for state, score in zip(states, scores.values())]
+    
+    def _entanglement_simulation(self, states):
+        """
+        Simulate quantum entanglement effects
+        
+        Args:
+            states: Current quantum states
+            
+        Returns:
+            list: Updated quantum states after entanglement simulation
+        """
+        n = len(states)
+        entangled_states = states.copy()
+        
+        for i in range(n-1):
+            entangled_states[i] = (states[i] + states[i+1]) / math.sqrt(2)
+        
+        entangled_states[-1] = (states[-1] + states[0]) / math.sqrt(2)
+        
+        return entangled_states
+    
+    def _local_search_optimization(self, route, real_time_data):
+        """
+        Apply classical local search for fine-tuning
+        
+        Args:
+            route: Selected route
+            real_time_data: Real-time data about traffic, weather, etc.
+            
+        Returns:
+            list: Optimized route after local search
+        """
+        improved = True
+        while improved:
+            improved = False
+            for i in range(len(route)-2):
+                new_route = route.copy()
+                new_route[i], new_route[i+1] = new_route[i+1], new_route[i]
+                
+                # Compare travel times
+                current_time = 1 - self._calculate_travel_time(route, real_time_data)
+                new_time = 1 - self._calculate_travel_time(new_route, real_time_data)
+                
+                if new_time < current_time:
+                    route = new_route
+                    improved = True
+        
+        return route
+
+
+class MultiScaleTemporalConvNet:
+    """
+    Multi-Scale Temporal Convolutional Network for dynamic routing optimization
+    """
+    def __init__(self, input_dim, num_scales, prediction_horizon):
+        """
+        Initialize the MS-TCN model
+        
+        Args:
+            input_dim: Input dimensionality
+            num_scales: Number of temporal scales to model
+            prediction_horizon: How far into the future to predict
+        """
+        self.input_dim = input_dim
+        self.num_scales = num_scales
+        self.prediction_horizon = prediction_horizon
+        
+        # Different dilation rates for different temporal scales
+        self.dilation_rates = {
+            'short': [1, 2, 4],         # For capturing immediate patterns
+            'medium': [8, 16, 32],      # For capturing medium-term patterns
+            'long': [64, 128, 256]      # For capturing long-term patterns
+        }
+        
+        # Initialize models for each scale
+        self.models = self._initialize_models()
+    
+    def _initialize_models(self):
+        """
+        Initialize TCN models for each temporal scale
+        
+        Returns:
+            dict: Models for different temporal scales
+        """
+        models = {}
+        
+        # In a real implementation, these would be PyTorch models
+        # Here we simulate the model structure
+        for scale in ['short', 'medium', 'long']:
+            models[scale] = {
+                'dilations': self.dilation_rates[scale],
+                'weights': np.random.randn(self.input_dim, self.prediction_horizon) * 0.1
+            }
+        
+        return models
+    
+    def predict(self, historical_data, scale='short'):
+        """
+        Make predictions at the specified temporal scale
+        
+        Args:
+            historical_data: Historical time series data
+            scale: Temporal scale for prediction ('short', 'medium', or 'long')
+            
+        Returns:
+            np.ndarray: Predictions for the specified horizon
+        """
+        if scale not in self.models:
+            raise ValueError(f"Unknown scale: {scale}")
+        
+        # In a real implementation, this would use the actual TCN model
+        # Here we simulate the prediction process
+        model = self.models[scale]
+        
+        # Apply simulated dilated convolutions
+        predictions = np.zeros((len(historical_data), self.prediction_horizon))
+        
+        for i in range(len(historical_data)):
+            # Simulate convolution with different dilation rates
+            for dilation in model['dilations']:
+                if i >= dilation:
+                    influence = 1.0 / dilation
+                    predictions[i] += historical_data[i-dilation] @ model['weights'] * influence
+            
+            # Add some noise for realism
+            predictions[i] += np.random.randn(self.prediction_horizon) * 0.05
+        
+        return predictions
+
+
+def estimate_uncertainty(predictions, historical_data):
+    """
+    Estimate prediction uncertainties
+    
+    Args:
+        predictions: List of predictions from different models
+        historical_data: Historical time series data
+        
+    Returns:
+        np.ndarray: Uncertainty estimates
+    """
+    # Stack predictions from different models
+    stacked_predictions = np.stack(predictions)
+    
+    # Calculate aleatoric uncertainty (data uncertainty)
+    # Measured by the variance of historical data
+    aleatoric = np.var(historical_data, axis=0)
+    
+    # Calculate epistemic uncertainty (model uncertainty)
+    # Measured by the variance across model predictions
+    epistemic = np.var(stacked_predictions, axis=0)
+    
+    # Combine uncertainties
+    total_uncertainty = aleatoric + epistemic
+    
+    # Normalize to [0, 1] range
+    normalized_uncertainty = total_uncertainty / np.max(total_uncertainty)
+    
+    return normalized_uncertainty
+
+
+def integrate_predictions(short_term, long_term, uncertainty):
+    """
+    Integrate predictions with uncertainty weighting
+    
+    Args:
+        short_term: Short-term predictions
+        long_term: Long-term predictions
+        uncertainty: Uncertainty estimates
+        
+    Returns:
+        np.ndarray: Integrated predictions
+    """
+    # Higher weight for short-term when uncertainty is high
+    # Higher weight for long-term when uncertainty is low
+    short_term_weight = 0.5 + uncertainty * 0.3
+    long_term_weight = 1.0 - short_term_weight
+    
+    # Weighted combination
+    integrated = short_term_weight[:, np.newaxis] * short_term + \
+                long_term_weight[:, np.newaxis] * long_term
+    
+    # Apply temporal smoothing
+    smoothed = np.zeros_like(integrated)
+    for i in range(len(integrated)):
+        if i == 0:
+            smoothed[i] = integrated[i]
+        else:
+            smoothed[i] = 0.7 * integrated[i] + 0.3 * smoothed[i-1]
+    
+    return smoothed
+
+
+def optimize_route_allocation(predictions, current_demands, constraints):
+    """
+    Optimize routes using integrated predictions
+    
+    Args:
+        predictions: Integrated demand predictions
+        current_demands: Current demand levels
+        constraints: System constraints
+        
+    Returns:
+        dict: Optimized routes and allocations
+    """
+    # In a real implementation, this would use an optimization algorithm
+    # Here we simulate the optimization process
+    
+    num_facilities = len(current_demands)
+    num_time_steps = predictions.shape[1]
+    
+    # Initialize route allocations
+    route_allocations = np.zeros((num_facilities, num_facilities, num_time_steps))
+    
+    # Simple greedy allocation based on predicted demands
+    for t in range(num_time_steps):
+        # Sort facilities by predicted demand
+        sorted_facilities = np.argsort(-predictions[:, t])
+        
+        # Allocate from high-supply to high-demand facilities
+        for i, src in enumerate(sorted_facilities[num_facilities//2:]):
+            dst = sorted_facilities[i]
+            if src != dst:  # Don't allocate to self
+                # Calculate allocation amount based on predicted difference
+                amount = min(
+                    predictions[dst, t] - current_demands[dst],  # Demand gap
+                    current_demands[src] - predictions[src, t],  # Supply excess
+                    constraints.get('max_allocation', float('inf'))
+                )
+                
+                if amount > 0:
+                    route_allocations[src, dst, t] = amount
+    
+    # Simulate route computation
+    optimized_routes = []
+    for src in range(num_facilities):
+        for dst in range(num_facilities):
+            if np.any(route_allocations[src, dst] > 0):
+                # In a real implementation, this would compute the actual route
+                optimized_routes.append({
+                    'source': src,
+                    'destination': dst,
+                    'allocations': route_allocations[src, dst],
+                    'path': [src, (src + dst) // 2, dst]  # Dummy path
+                })
+    
+    return {
+        'routes': optimized_routes,
+        'allocations': route_allocations
+    }
+
+
+def dynamic_route_optimizer(historical_data, current_demands, prediction_horizon, constraints):
+    """
+    Implements dynamic route optimization using multi-scale temporal predictions
+    and uncertainty-aware decision making.
+    
+    Args:
+        historical_data: Historical demand data
+        current_demands: Current demand levels
+        prediction_horizon: How far into the future to predict
+        constraints: System constraints
+        
+    Returns:
+        dict: Optimized routes and performance metrics
+    """
+    # Initialize MS-TCN model for multi-scale temporal predictions
+    ms_tcn = MultiScaleTemporalConvNet(
+        input_dim=historical_data.shape[1],
+        num_scales=3,  # Short, medium, and long-term patterns
+        prediction_horizon=prediction_horizon
+    )
+    
+    # Generate demand predictions at multiple time scales
+    short_term_pred = ms_tcn.predict(historical_data, scale='short')
+    long_term_pred = ms_tcn.predict(historical_data, scale='long')
+    
+    # Estimate prediction uncertainties
+    uncertainty = estimate_uncertainty(
+        predictions=[short_term_pred, long_term_pred],
+        historical_data=historical_data
+    )
+    
+    # Integrate predictions with uncertainty weighting
+    final_predictions = integrate_predictions(
+        short_term=short_term_pred,
+        long_term=long_term_pred,
+        uncertainty=uncertainty
+    )
+    
+    # Optimize routes using integrated predictions
+    optimized_routes = optimize_route_allocation(
+        predictions=final_predictions,
+        current_demands=current_demands,
+        constraints=constraints
+    )
+    
+    return {
+        'optimized_routes': optimized_routes,
+        'predictions': final_predictions,
+        'uncertainty': uncertainty
+    }
+
+
+###########################################
+# 6. Blockchain-Driven Data Integrity and Security
+###########################################
+
+class Block:
+    """
+    Represents a block in the blockchain
+    """
+    def __init__(self, index, timestamp, transactions, previous_hash):
+        """
+        Initialize a block
+        
+        Args:
+            index: Block index in the chain
+            timestamp: Block creation timestamp
+            transactions: List of transactions in the block
+            previous_hash: Hash of the previous block
+        """
+        self.index = index
+        self.timestamp = timestamp
+        self.transactions = transactions
+        self.previous_hash = previous_hash
+        self.nonce = 0
+        self.hash = self.calculate_hash()
+    
+    def calculate_hash(self):
+        """
+        Calculate the hash of the block using quantum-resistant algorithm
+        
+        Returns:
+            str: Hash of the block
+        """
+        # In a real implementation, this would use a quantum-resistant hash function
+        block_data = str(self.index) + str(self.timestamp) + str(self.transactions) + str(self.previous_hash) + str(self.nonce)
+        return hashlib.sha256(block_data.encode()).hexdigest()
+    
+    def mine_block(self, difficulty):
+        """
+        Mine the block with proof-of-work algorithm
+        
+        Args:
+            difficulty: Mining difficulty (number of leading zeros)
+            
+        Returns:
+            bool: True if block is mined
+        """
+        target = '0' * difficulty
+        
+        while self.hash[:difficulty] != target:
+            self.nonce += 1
+            self.hash = self.calculate_hash()
+        
+        print(f"Block {self.index} mined: {self.hash}")
+        return True
+
+
+class BlockchainLedger:
+    """
+    Implements a quantum-safe blockchain ledger for supply chain data
+    """
+    def __init__(self, difficulty=4):
+        """
+        Initialize the blockchain
+        
+        Args:
+            difficulty: Mining difficulty
+        """
+        self.chain = []
+        self.difficulty = difficulty
+        self.pending_transactions = []
+        self.nodes = set()
+        
+        # Create genesis block
+        self.create_genesis_block()
+    
+    def create_genesis_block(self):
+        """
+        Create the first block in the chain
+        """
+        genesis_block = Block(0, time.time(), ["Genesis Block"], "0")
+        genesis_block.mine_block(self.difficulty)
+        self.chain.append(genesis_block)
+    
+    def get_latest_block(self):
+        """
+        Get the latest block in the chain
+        
+        Returns:
+            Block: Latest block
+        """
+        return self.chain[-1]
+    
+    def add_transaction(self, transaction):
+        """
+        Add a transaction to pending transactions
+        
+        Args:
+            transaction: Transaction data
+            
+        Returns:
+            int: Index of the block that will hold this transaction
+        """
+        # Verify transaction (in a real implementation, this would use quantum-resistant signatures)
+        if self.verify_transaction(transaction):
+            self.pending_transactions.append(transaction)
+            return self.get_latest_block().index + 1
+        return None
+    
+    def verify_transaction(self, transaction):
+        """
+        Verify transaction using quantum-resistant signature
+        
+        Args:
+            transaction: Transaction to verify
+            
+        Returns:
+            bool: True if transaction is valid
+        """
+        # In a real implementation, this would verify using CRYSTALS-Dilithium
+        # Here we always return True for simulation
+        return True
+    
+    def mine_pending_transactions(self, miner_address):
+        """
+        Mine pending transactions into a new block
+        
+        Args:
+            miner_address: Address to receive mining reward
+            
+        Returns:
+            Block: Newly mined block
+        """
+        if not self.pending_transactions:
+            return None
+        
+        # Add mining reward transaction
+        self.pending_transactions.append({
+            "sender": "network",
+            "recipient": miner_address,
+            "amount": 1,  # Mining reward
+            "timestamp": time.time()
+        })
+        
+        # Create new block
+        block = Block(
+            len(self.chain),
+            time.time(),
+            self.pending_transactions,
+            self.get_latest_block().hash
+        )
+        
+        # Mine the block
+        block.mine_block(self.difficulty)
+        
+        # Add block to chain
+        self.chain.append(block)
+        
+        # Clear pending transactions
+        self.pending_transactions = []
+        
+        return block
+    
+    def is_chain_valid(self):
+        """
+        Validate the integrity of the blockchain
+        
+        Returns:
+            bool: True if blockchain is valid
+        """
+        for i in range(1, len(self.chain)):
+            current_block = self.chain[i]
+            previous_block = self.chain[i - 1]
+            
+            # Verify current block hash
+            if current_block.hash != current_block.calculate_hash():
+                print("Invalid block hash")
+                return False
+            
+            # Verify block linkage
+            if current_block.previous_hash != previous_block.hash:
+                print("Invalid block linkage")
+                return False
+        
+        return True
+    
+    def register_node(self, address):
+        """
+        Add a new node to the list of nodes
+        
+        Args:
+            address: Node address
+        """
+        self.nodes.add(address)
+    
+    def consensus(self, node_chains):
+        """
+        Consensus algorithm to resolve conflicts between nodes
+        
+        Args:
+            node_chains: List of chains from different nodes
+            
+        Returns:
+            bool: True if our chain was replaced
+        """
+        longest_chain = None
+        max_length = len(self.chain)
+        
+        # Find the longest valid chain
+        for chain in node_chains:
+            length = len(chain)
+            
+            # Check if the chain is longer and valid
+            if length > max_length and self.is_chain_valid_external(chain):
+                max_length = length
+                longest_chain = chain
+        
+        # Replace our chain if a longer valid chain was found
+        if longest_chain:
+            self.chain = longest_chain
+            return True
+        
+        return False
+    
+    def is_chain_valid_external(self, chain):
+        """
+        Validate an external blockchain
+        
+        Args:
+            chain: External blockchain to validate
+            
+        Returns:
+            bool: True if blockchain is valid
+        """
+        for i in range(1, len(chain)):
+            current_block = chain[i]
+            previous_block = chain[i - 1]
+            
+            # Verify block hash and linkage
+            if (current_block.hash != current_block.calculate_hash() or
+                current_block.previous_hash != previous_block.hash):
+                return False
+        
+        return True
+
+
+class QuantumSafeTransaction:
+    """
+    Represents a quantum-safe transaction for the blockchain
+    """
+    def __init__(self, sender, recipient, data, signature_algorithm='dilithium'):
+        """
+        Initialize a transaction
+        
+        Args:
+            sender: Sender identifier
+            recipient: Recipient identifier
+            data: Transaction data
+            signature_algorithm: Quantum-resistant signature algorithm to use
+        """
+        self.sender = sender
+        self.recipient = recipient
+        self.data = data
+        self.timestamp = time.time()
+        self.signature = None
+        self.signature_algorithm = signature_algorithm
+    
+    def calculate_hash(self):
+        """
+        Calculate transaction hash
+        
+        Returns:
+            str: Transaction hash
+        """
+        transaction_data = str(self.sender) + str(self.recipient) + str(self.data) + str(self.timestamp)
+        return hashlib.sha256(transaction_data.encode()).hexdigest()
+    
+    def sign_transaction(self, private_key):
+        """
+        Sign the transaction using quantum-resistant signature
+        
+        Args:
+            private_key: Private key for signing
+        """
+        # In a real implementation, this would use actual quantum-resistant signatures
+        transaction_hash = self.calculate_hash()
+        
+        if self.signature_algorithm == 'dilithium':
+            # Simulate CRYSTALS-Dilithium signature
+            crypto = QuantumSafeCrypto()
+            self.signature = crypto.dilithium_sign(transaction_hash, private_key)
+        elif self.signature_algorithm == 'sphincs':
+            # Simulate SPHINCS+ signature
+            crypto = QuantumSafeCrypto()
+            self.signature = crypto.sphincs_sign(transaction_hash, private_key)
+        else:
+            raise ValueError(f"Unsupported signature algorithm: {self.signature_algorithm}")
+    
+    def verify_signature(self, public_key):
+        """
+        Verify transaction signature
+        
+        Args:
+            public_key: Public key for verification
+            
+        Returns:
+            bool: True if signature is valid
+        """
+        if not self.signature:
+            return False
+        
+        transaction_hash = self.calculate_hash()
+        
+        # In a real implementation, this would use actual quantum-resistant signature verification
+        if self.signature_algorithm == 'dilithium':
+            # Simulate CRYSTALS-Dilithium verification
+            crypto = QuantumSafeCrypto()
+            return crypto.dilithium_verify(transaction_hash, self.signature, public_key)
+        elif self.signature_algorithm == 'sphincs':
+            # Simulate SPHINCS+ verification
+            crypto = QuantumSafeCrypto()
+            return crypto.sphincs_verify(transaction_hash, self.signature, public_key)
+        else:
+            return False
+
+
+###########################################
+# 7. Integration Examples
+###########################################
+
+def create_vaccine_supply_chain_network(num_nodes=5, num_regions=2):
+    """
+    Create a simulated vaccine supply chain network
+    
+    Args:
+        num_nodes: Number of MEC nodes
+        num_regions: Number of geographic regions
+        
+    Returns:
+        dict: Supply chain network
+    """
+    nodes = []
+    
+    # Create MEC nodes
+    for i in range(num_nodes):
+        # Randomize node locations within regions
+        region = i % num_regions
+        lat_base = 40.0 + region * 10.0
+        lon_base = -75.0 + region * 15.0
+        
+        location = (
+            lat_base + np.random.uniform(-1.0, 1.0),
+            lon_base + np.random.uniform(-1.0, 1.0)
+        )
+        
+        # Create node with random capacity and processing power
+        node = MECNode(
+            node_id=f"node_{i}",
+            location=location,
+            capacity=np.random.randint(10000, 100000),  # Random capacity
+            processing_power=np.random.randint(1000, 10000)  # Random processing power
+        )
+        
+        nodes.append(node)
+    
+    # Connect nodes
+    for i in range(num_nodes):
+        for j in range(num_nodes):
+            if i != j:
+                # Connect nodes within the same region more densely
+                if i % num_regions == j % num_regions or np.random.random() < 0.3:
+                    nodes[i].connect_to_node(nodes[j])
+    
+    # Create and share blockchain across nodes
+    blockchain = BlockchainLedger(difficulty=3)
+    
+    for node in nodes:
+        node.blockchain = blockchain
+        blockchain.register_node(node.node_id)
+    
+    # Add initial inventory
+    vaccine_types = ["vaccine_A", "vaccine_B", "vaccine_C"]
+    
+    for i, node in enumerate(nodes):
+        for vaccine_type in vaccine_types:
+            # Add random inventory for each vaccine type
+            node.add_inventory(
+                vaccine_id=vaccine_type,
+                quantity=np.random.randint(1000, 10000),
+                expiry_date=time.time() + np.random.randint(30, 365) * 86400,  # Random expiry (30-365 days)
+                temperature_range=(2.0, 8.0)  # Standard vaccine temperature range
+            )
+    
+    # Establish quantum-safe communications
+    for i in range(num_nodes):
+        for j in range(i+1, num_nodes):
+            nodes[i].establish_qkd_connection(nodes[j])
+    
+    return {
+        "nodes": nodes,
+        "blockchain": blockchain,
+        "vaccine_types": vaccine_types
+    }
+
+
+def simulate_supply_chain_operations(network, num_steps=10):
+    """
+    Simulate vaccine supply chain operations
+    
+    Args:
+        network: Supply chain network
+        num_steps: Number of simulation steps
+        
+    Returns:
+        dict: Simulation results
+    """
+    nodes = network["nodes"]
+    blockchain = network["blockchain"]
+    vaccine_types = network["vaccine_types"]
+    
+    results = {
+        "transactions": [],
+        "inventory_changes": [],
+        "route_optimizations": [],
+        "anomalies_detected": []
+    }
+    
+    # Load ML models
+    han_model = HANResourceAllocation(
+        input_dim=10,  # Simplified for simulation
+        num_facilities=len(nodes),
+        num_regions=2
+    )
+    
+    # Create AMARL agents
+    amarl_agents = AMARL(
+        n_agents=len(nodes),
+        state_dim=15,  # Simplified for simulation
+        action_dim=3   # Resource, Transport, Storage actions
+    )
+    
+    # Create route optimizer
+    route_optimizer = QuantumInspiredRouteOptimizer(
+        n_routes=len(nodes) * (len(nodes) - 1),
+        constraints={"max_allocation": 1000}
+    )
+    
+    # Generate routes
+    routes = []
+    for i in range(len(nodes)):
+        for j in range(len(nodes)):
+            if i != j:
+                # Simple route simulation
+                route = [
+                    {"location": nodes[i].location, "road_type": "highway", "road_condition": "good"},
+                    {"location": ((nodes[i].location[0] + nodes[j].location[0])/2, 
+                                 (nodes[i].location[1] + nodes[j].location[1])/2),
+                     "road_type": "main_road", "road_condition": "fair"},
+                    {"location": nodes[j].location, "road_type": "local_road", "road_condition": "good"}
+                ]
+                routes.append(route)
+    
+    # Run simulation
+    for step in range(num_steps):
+        print(f"\nSimulation step {step+1}/{num_steps}")
+        
+        # 1. Process sensor data
+        for node in nodes:
+            for _ in range(np.random.randint(1, 5)):  # Random number of sensor readings
+                sensor_id = f"sensor_{np.random.randint(1000)}"
+                data_type = np.random.choice(["temperature", "location", "inventory"])
+                
+                if data_type == "temperature":
+                    # Normal temperature with occasional anomalies
+                    value = np.random.normal(5.0, 1.0)
+                    if np.random.random() < 0.1:  # 10% chance of anomaly
+                        value = np.random.choice([1.0, 10.0])  # Too cold or too hot
+                
+                elif data_type == "location":
+                    # Location near the node
+                    value = (
+                        node.location[0] + np.random.uniform(-0.1, 0.1),
+                        node.location[1] + np.random.uniform(-0.1, 0.1)
+                    )
+                
+                else:  # inventory
+                    vaccine_id = np.random.choice(vaccine_types)
+                    current_qty = node.inventory.get(vaccine_id, {}).get('quantity', 0)
+                    # Random inventory change (-10% to +10%)
+                    change = int(current_qty * np.random.uniform(-0.1, 0.1))
+                    value = {"vaccine_id": vaccine_id, "quantity": current_qty + change}
+                
+                result = node.process_sensor_data(sensor_id, data_type, value, time.time())
+                
+                # Check for anomalies
+                if data_type == "temperature" and isinstance(result, dict) and result.get('alert', False):
+                    print(f"Temperature anomaly detected at {node.node_id}: {result}")
+                    results["anomalies_detected"].append({
+                        "step": step,
+                        "node_id": node.node_id,
+                        "anomaly": result
+                    })
+                    
+                    # Create blockchain transaction for the anomaly
+                    anomaly_transaction = {
+                        "type": "anomaly",
+                        "node_id": node.node_id,
+                        "sensor_id": sensor_id,
+                        "data": result,
+                        "timestamp": time.time()
+                    }
+                    
+                    blockchain.add_transaction(anomaly_transaction)
+                    results["transactions"].append(anomaly_transaction)
+        
+        # 2. Run resource allocation using HAN-RA
+        # Prepare input data (simplified for simulation)
+        batch_size = 1
+        num_facilities = len(nodes)
+        input_dim = 10
+        
+        # Generate random facility data for simulation
+        facility_data = torch.rand(batch_size, num_facilities, input_dim)
+        regional_data = torch.rand(batch_size, 2, input_dim)  # 2 regions
+        global_data = torch.rand(batch_size, 1, input_dim)
+        
+        # Get resource allocation decisions
+        with torch.no_grad():
+            decisions = han_model(facility_data, regional_data, global_data)
+        
+        # Apply resource allocation decisions
+        for i, node in enumerate(nodes):
+            for vaccine_id in vaccine_types:
+                if vaccine_id in node.inventory:
+                    # Update inventory based on allocation decisions
+                    allocation_factor = float(decisions['inventory_allocation'][0, i].item())
+                    node.inventory[vaccine_id]['quantity'] = int(
+                        node.inventory[vaccine_id]['quantity'] * (1 + (allocation_factor - 0.5) * 0.2)
+                    )
+                    
+                    # Record inventory change
+                    results["inventory_changes"].append({
+                        "step": step,
+                        "node_id": node.node_id,
+                        "vaccine_id": vaccine_id,
+                        "quantity": node.inventory[vaccine_id]['quantity'],
+                        "allocation_factor": allocation_factor
+                    })
+        
+        # 3. Run route optimization
+        # Prepare real-time data
+        real_time_data = {
+            "traffic_factor": np.random.uniform(0.8, 1.5),  # Random traffic conditions
+            "weather_factor": np.random.uniform(0.9, 1.2),  # Random weather conditions
+            "weather_risk": np.random.uniform(0.05, 0.2),   # Random weather risk
+            "security_risk": np.random.uniform(0.05, 0.15), # Random security risk
+            "temperature_control": np.random.uniform(0.85, 0.98)  # Random temperature control quality
+        }
+        
+        # Optimize routes
+        optimized_route = route_optimizer.optimize_routes(routes, real_time_data)
+        results["route_optimizations"].append({
+            "step": step,
+            "optimized_route": optimized_route,
+            "real_time_data": real_time_data
+        })
+        
+        print(f"Optimized route score: {optimized_route['score']:.4f}")
+        
+        # 4. Run AMARL for coordinated decision-making
+        for i, node in enumerate(nodes):
+            # Prepare state (simplified for simulation)
+            state = {
+                "local_state": np.random.rand(5),  # Local facility metrics
+                "shared_state": np.random.rand(5),  # Shared network information
+                "environmental_state": np.random.rand(5)  # Environmental factors
+            }
+            
+            # Select action
+            action = amarl_agents.select_action(i, state)
+            
+            # Simulate reward
+            efficiency = np.random.uniform(0.7, 0.9)
+            coverage = np.random.uniform(0.7, 0.9)
+            wastage_prevention = np.random.uniform(0.7, 0.9)
+            constraints_violation = np.random.uniform(0.0, 0.2)
+            
+            reward = amarl_agents.compute_reward(
+                efficiency, coverage, wastage_prevention, constraints_violation
+            )
+            
+            # Train agent
+            amarl_agents.train(i, [state], [action], [reward])
+            
+            # Apply action (simplified)
+            resource_action = action[0]  # Resource allocation
+            transport_action = action[1]  # Transport decision
+            storage_action = action[2]  # Storage decision
+            
+            # Create blockchain transaction for major actions
+            if abs(resource_action) > 0.5 or abs(transport_action) > 0.5 or abs(storage_action) > 0.5:
+                action_transaction = {
+                    "type": "agent_action",
+                    "node_id": node.node_id,
+                    "actions": {
+                        "resource": float(resource_action),
+                        "transport": float(transport_action),
+                        "storage": float(storage_action)
+                    },
+                    "timestamp": time.time()
+                }
+                
+                blockchain.add_transaction(action_transaction)
+                results["transactions"].append(action_transaction)
+        
+        # 5. Mine blockchain
+        if len(blockchain.pending_transactions) > 0:
+            miner_node = nodes[step % len(nodes)]  # Round-robin mining
+            blockchain.mine_pending_transactions(miner_node.node_id)
+            print(f"Block mined by {miner_node.node_id}")
+        
+        # 6. Verify blockchain integrity
+        is_valid = blockchain.is_chain_valid()
+        print(f"Blockchain integrity: {'Valid' if is_valid else 'Invalid'}")
+        
+        # 7. Simulate secure communications between nodes
+        for i in range(len(nodes)):
+            for j in range(i+1, len(nodes)):
+                if np.random.random() < 0.3:  # 30% chance to communicate
+                    message = f"Status update from step {step}"
+                    encrypted = nodes[i].send_secure_message(nodes[j], message)
+                    decrypted = nodes[j].receive_secure_message(encrypted)
+                    
+                    if message != decrypted:
+                        print(f"Communication error between {nodes[i].node_id} and {nodes[j].node_id}")
+    
+    return results
+
+
+###########################################
+# 8. Main Function
+###########################################
+
+def main():
+    """
+    Main function to demonstrate the Edge-Enabled Quantum-Safe Real-Time 
+    Vaccine Supply Chain Optimization Framework
+    """
+    print("Initializing Edge-Enabled Quantum-Safe Real-Time Vaccine Supply Chain Optimization Framework...")
+    
+    # Create supply chain network
+    print("\nCreating vaccine supply chain network...")
+    network = create_vaccine_supply_chain_network(num_nodes=5, num_regions=2)
+    print(f"Created network with {len(network['nodes'])} nodes")
+    
+    # Simulate operations
+    print("\nSimulating supply chain operations...")
+    results = simulate_supply_chain_operations(network, num_steps=5)
+    
+    # Print summary
+    print("\nSimulation Summary:")
+    print(f"Total transactions: {len(results['transactions'])}")
+    print(f"Inventory changes: {len(results['inventory_changes'])}")
+    print(f"Route optimizations: {len(results['route_optimizations'])}")
+    print(f"Anomalies detected: {len(results['anomalies_detected'])}")
+    
+    print("\nFinal blockchain state:")
+    blockchain = network["blockchain"]
+    print(f"Chain length: {len(blockchain.chain)} blocks")
+    print(f"Chain valid: {blockchain.is_chain_valid()}")
+    
+    print("\nNode inventory status:")
+    for node in network["nodes"]:
+        print(f"Node {node.node_id} inventory:")
+        for vaccine_id, info in node.inventory.items():
+            print(f"  {vaccine_id}: {info['quantity']} doses")
+    
+    print("\nFramework demonstration completed successfully!")
+
+
+if __name__ == "__main__":
+    main()
